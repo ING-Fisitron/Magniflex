@@ -1062,7 +1062,6 @@ void ctrl_tsk( void *vargs ) {
 		gpio_set_level(GPIO_OUTPUT_IO_0, 0);
 		vTaskDelay(500/portTICK_PERIOD_MS);
 
-
 	}
 
 	vTaskDelete(NULL);
