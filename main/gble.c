@@ -200,7 +200,7 @@ void example_exec_write_event_env(prepare_type_env_t *prepare_write_env, esp_ble
  * ------------------------------------------------------- */
 int bt_snd_rsp_flag = 0; // TODO: fix on the go.
 
-char str[1000];
+char str[2000];
 char *pstr = str;
 int totbtl = 0;
 int sendlen = 100;
@@ -262,7 +262,7 @@ char custom_password[30];
 
 void prs_bt_js( char *js ) {
 	int prs_s = 0;
-	char s[200];
+	char s[400];
 	char *savep;
 	char *p;
 	savep = js;
@@ -353,7 +353,7 @@ void prs_bt_js( char *js ) {
 		str[0] = 0;
 		// Replay wifi nets.
 		int indx = 0;
-		strcat(str,"{'wifi':[");
+
 		wifi_ap_record_t *temp_ap_records_p=malloc(MAX_APs * sizeof(wifi_ap_record_t));
 		memset(temp_ap_records_p,0, MAX_APs * sizeof(wifi_ap_record_t));
 
@@ -366,12 +366,15 @@ void prs_bt_js( char *js ) {
 		memset(ap_records,0, MAX_APs * sizeof(wifi_ap_record_t));
 		memcpy(ap_records, temp_ap_records_p, MAX_APs * sizeof(wifi_ap_record_t));
 
+		strcat(str,"{'wifi':[");
+
 		for(int i=0;i<MAX_APs;i++)
 		{
-			sprintf(s, "{'ssid':'%s','security':'WPA %s','rssi':'%d'}",
-					(char*) ap_records[i].ssid,
-					auth_names[ap_records[i].authmode],
-					ap_records[i].rssi);
+			sprintf(s, "{'ssid':'%s','security':'WPA %s','rssi':'%d'}",(char*) ap_records[i].ssid,auth_names[ap_records[i].authmode],ap_records[i].rssi);
+
+			ESP_LOGI(TAG,"%s\r\n",s);
+
+
 			if(i < MAX_APs-1)
 				strcat(s,",");
 
@@ -380,14 +383,10 @@ void prs_bt_js( char *js ) {
 
 		strcat(str,"]}\r\n");
 
-		//totbtl = strlen(str);
-		//ESP_LOGI(TAG,"BEFORE %s(%d)",str, totbtl);
-		//memset(str,0,sizeof(str));
-		//strcat(str,"{'wifi':[{'ssid':'Vodafone-A37838841','security':'WPA WPA2 PSK','rssi':'-45'}");
-		//strcat(str,"]}\r\n");
+
 
 		totbtl = strlen(str);
-		ESP_LOGI(TAG,"%s(%d)",str, totbtl);
+		//ESP_LOGI(TAG,"%s(%d)",str, totbtl);
 		bt_wr(totbtl, str);
 	} break;
 

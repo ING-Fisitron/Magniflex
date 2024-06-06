@@ -27,6 +27,11 @@
 #include "driver/gpio.h"
 #include "esp_spiffs.h"
 
+
+#include "esp_ota_ops.h"
+#include "esp_http_client.h"
+#include "esp_https_ota.h"
+
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -117,6 +122,8 @@ const char cmd_str[NCMD][10] = {
 
 magniflex_reg_t curdev; // Main device register structure.
 
+
+char macstr[20];
 
 
 extern char giotc_cfg_dev_id[500];
@@ -442,7 +449,8 @@ void param_add2_json( param_t *par, char* pname, data_mode_t m, char* s ) {
 // It checks both time intervals and pending requests.
 void param_chck_pub( magniflex_reg_t *dev, char* js_str ) {
 
-	if(dev->presence == 1)
+	//if(dev->presence == 1)
+	if(true)
 	{
 		//strcat(js_str,"{'wifi':[{'ssid':'Vodafone-A37838841','security':'WPA WPA2 PSK','rssi':'-45'}");
 		//dev->presence = 0;
@@ -952,11 +960,6 @@ static void stats_task(void *arg)
 void ctrl_tsk( void *vargs ) {
 
 
-	// Get device mac address.
-	char macstr[20] = {"ac67b254bdb0"};
-	//get_mac_str(macstr);
-
-
 #ifdef GIOTCP_PUB
 
 	sprintf(giotc_cfg_dev_id,GCPIOT_CLIENT_ID_TEMPLATE,macstr);
@@ -1031,7 +1034,6 @@ void ctrl_tsk( void *vargs ) {
 	while(1)
 	{
 
-
 		float t = 0.0f, h = 0.0f;
 		// Acquire environment parameters.
 		MEMS_ENV_SENSOR_GetValue(MEMS_HTS221_0, ENV_TEMPERATURE, &t);
@@ -1067,77 +1069,8 @@ void ctrl_tsk( void *vargs ) {
 	vTaskDelete(NULL);
 }
 
-//// RESET GPIO.
-//xQueueHandle casesns_gpio_queue;
-//IRAM_ATTR void gpio_isr_handler(void* arg) {
-//	uint32_t gpio_num = (uint32_t) arg;
-//	xQueueSendFromISR(casesns_gpio_queue, &gpio_num, NULL);
-//}
-
-/* GPIOs event handling task */
-//void gpio_event_task( void *pvParameters ) {
-//
-//	uint32_t io_num;
-//
-//	while(1) {
-//
-//		if( xQueueReceive( casesns_gpio_queue, &io_num, portMAX_DELAY ) ) {
-//
-//			switch ( io_num )
-//			{
-//			case RESET_GPIO: {
-//				ESP_LOGI(TAG,"Erase NVS flash partition.");
-//				//nvs_flash_erase();
-//				ESP_LOGI(TAG,"Reboot system.  CAZZZO");
-//				//esp_restart();
-//			} break;
-//
-//			default:
-//				break;
-//			}
-//		}
-//	}
-//
-//	vTaskDelete(NULL);
-//}
-
-
-
-char *xread_f(char *path) {
-	ESP_LOGI(TAG, "Reading file: %s", path);
-
-	// Open for reading hello.txt
-	FILE* f = fopen(path, "r");
-	if (f == NULL) {
-		ESP_LOGE(TAG, "Failed to open: %s", path);
-		return NULL;
-	}
-
-	int size;
-	fseek(f, 0, SEEK_END);
-	size = ftell(f);
-	fseek(f, 0, SEEK_SET);
-	ESP_LOGI(TAG,"file size: %d", size);
-
-	char *tf = (char*) calloc(1,size+1);
-	if ( tf == NULL ) {
-		ESP_LOGE(TAG, "Failed memory allocation for file: %s", path);
-		return NULL;
-	}
-
-	if ( fread(tf, 1, size, f) == NULL) {
-		ESP_LOGE(TAG, "Failed read file: %s", path);
-		return NULL;
-	}
-	fclose(f);
-	return tf;
-}
-
-
-
 
 static int s_retry_num = 0;
-
 static void event_handler(void* arg, esp_event_base_t event_base,
 		int32_t event_id, void* event_data)
 {
@@ -1150,7 +1083,6 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 
 	else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_CONNECTED) {
 
-		wifi_connected = true;
 		ESP_LOGI(TAG,"connect to the Wifi success");
 	}
 
@@ -1170,215 +1102,43 @@ static void event_handler(void* arg, esp_event_base_t event_base,
 		ip_event_got_ip_t* event = (ip_event_got_ip_t*) event_data;
 		ESP_LOGI(TAG, "got ip:" IPSTR, IP2STR(&event->ip_info.ip));
 		s_retry_num = 0;
+		wifi_connected = true;
+
 		//xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
 	}
 }
 
 
-void ble_tsk( void *vargs ) {
 
-	while (1)
-	{
-		char blemsg[500];
-		if (is_ble_msg() > 0) {
-			if (get_ble_msg(blemsg) < 0) {
-				ESP_LOGE(TAG,"error: read BLE stored message.");
-			}
-			else {
-				ESP_LOGI(TAG,"%s",blemsg);
-				prs_bt_js(blemsg);
-			}
-		}
-		vTaskDelay(500/portTICK_PERIOD_MS);
+char ota_url_response_buffer[100] = {0};
+esp_err_t _http_event_handler(esp_http_client_event_t *evt)
+{
+	switch (evt->event_id) {
+	case HTTP_EVENT_ERROR:
+		ESP_LOGD(TAG, "HTTP_EVENT_ERROR");
+		break;
+	case HTTP_EVENT_ON_CONNECTED:
+		ESP_LOGD(TAG, "HTTP_EVENT_ON_CONNECTED");
+		break;
+	case HTTP_EVENT_HEADER_SENT:
+		ESP_LOGD(TAG, "HTTP_EVENT_HEADER_SENT");
+		break;
+	case HTTP_EVENT_ON_HEADER:
+		ESP_LOGD(TAG, "HTTP_EVENT_ON_HEADER, key=%s, value=%s", evt->header_key, evt->header_value);
+		break;
+	case HTTP_EVENT_ON_DATA:
+		ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
+		break;
+	case HTTP_EVENT_ON_FINISH:
+		ESP_LOGD(TAG, "HTTP_EVENT_ON_FINISH");
+		break;
+	case HTTP_EVENT_DISCONNECTED:
+		ESP_LOGD(TAG, "HTTP_EVENT_DISCONNECTED");
+		break;
 	}
+	return ESP_OK;
 }
-
 //*********************************************************************//
-//#if CONFIG_IDF_TARGET_ESP32
-//#define LEDC_HS_TIMER          LEDC_TIMER_0
-//#define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
-//#define LEDC_HS_CH0_GPIO       (25)
-//#define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_0
-//#define LEDC_HS_CH1_GPIO       (26)
-//#define LEDC_HS_CH1_CHANNEL    LEDC_CHANNEL_1
-//#endif
-//#define LEDC_LS_TIMER          LEDC_TIMER_1
-//#define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
-//#if !CONFIG_IDF_TARGET_ESP32
-//#define LEDC_LS_CH0_GPIO       (18)
-//#define LEDC_LS_CH0_CHANNEL    LEDC_CHANNEL_0
-//#define LEDC_LS_CH1_GPIO       (19)
-//#define LEDC_LS_CH1_CHANNEL    LEDC_CHANNEL_1
-//#endif
-//#define LEDC_LS_CH2_GPIO       (2)
-//#define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
-//#define LEDC_LS_CH3_GPIO       (5)
-//#define LEDC_LS_CH3_CHANNEL    LEDC_CHANNEL_3
-//
-//#define LEDC_TEST_CH_NUM       (3)
-//#define LEDC_TEST_DUTY         (4000)
-//#define LEDC_TEST_FADE_TIME    (3000)
-///*
-// * This callback function will be called when fade operation has ended
-// * Use callback only if you are aware it is being called inside an ISR
-// * Otherwise, you can use a semaphore to unblock tasks
-// */
-//static IRAM_ATTR bool cb_ledc_fade_end_event(const ledc_cb_param_t *param, void *user_arg)
-//{
-//    portBASE_TYPE taskAwoken = pdFALSE;
-//
-//    if (param->event == LEDC_FADE_END_EVT) {
-//        SemaphoreHandle_t counting_sem = (SemaphoreHandle_t) user_arg;
-//        xSemaphoreGiveFromISR(counting_sem, &taskAwoken);
-//    }
-//
-//    return (taskAwoken == pdTRUE);
-//}
-//
-//void led_tsk( void *vargs )
-//{
-//    int ch;
-//
-//    /*
-//     * Prepare and set configuration of timers
-//     * that will be used by LED Controller
-//     */
-//    ledc_timer_config_t ledc_timer = {
-//        .duty_resolution = LEDC_TIMER_13_BIT, // resolution of PWM duty
-//        .freq_hz = 5000,                      // frequency of PWM signal
-//        .speed_mode = LEDC_LS_MODE,           // timer mode
-//        .timer_num = LEDC_LS_TIMER,            // timer index
-//        .clk_cfg = LEDC_AUTO_CLK,              // Auto select the source clock
-//    };
-//    // Set configuration of timer0 for high speed channels
-//    ledc_timer_config(&ledc_timer);
-//#ifdef CONFIG_IDF_TARGET_ESP32
-//    // Prepare and set configuration of timer1 for low speed channels
-//    ledc_timer.speed_mode = LEDC_HS_MODE;
-//    ledc_timer.timer_num = LEDC_HS_TIMER;
-//    ledc_timer_config(&ledc_timer);
-//#endif
-//    /*
-//     * Prepare individual configuration
-//     * for each channel of LED Controller
-//     * by selecting:
-//     * - controller's channel number
-//     * - output duty cycle, set initially to 0
-//     * - GPIO number where LED is connected to
-//     * - speed mode, either high or low
-//     * - timer servicing selected channel
-//     *   Note: if different channels use one timer,
-//     *         then frequency and bit_num of these channels
-//     *         will be the same
-//     */
-//    ledc_channel_config_t ledc_channel[LEDC_TEST_CH_NUM] = {
-//#if CONFIG_IDF_TARGET_ESP32
-//        {
-//            .channel    = LEDC_HS_CH0_CHANNEL,
-//            .duty       = 0,
-//            .gpio_num   = LEDC_HS_CH0_GPIO,
-//            .speed_mode = LEDC_HS_MODE,
-//            .hpoint     = 0,
-//            .timer_sel  = LEDC_HS_TIMER,
-//            .flags.output_invert = 0
-//        },
-//        {
-//            .channel    = LEDC_HS_CH1_CHANNEL,
-//            .duty       = 0,
-//            .gpio_num   = LEDC_HS_CH1_GPIO,
-//            .speed_mode = LEDC_HS_MODE,
-//            .hpoint     = 0,
-//            .timer_sel  = LEDC_HS_TIMER,
-//            .flags.output_invert = 0
-//        },
-//#else
-//        {
-//            .channel    = LEDC_LS_CH0_CHANNEL,
-//            .duty       = 0,
-//            .gpio_num   = LEDC_LS_CH0_GPIO,
-//            .speed_mode = LEDC_LS_MODE,
-//            .hpoint     = 0,
-//            .timer_sel  = LEDC_LS_TIMER,
-//            .flags.output_invert = 0
-//        },
-//        {
-//            .channel    = LEDC_LS_CH1_CHANNEL,
-//            .duty       = 0,
-//            .gpio_num   = LEDC_LS_CH1_GPIO,
-//            .speed_mode = LEDC_LS_MODE,
-//            .hpoint     = 0,
-//            .timer_sel  = LEDC_LS_TIMER,
-//            .flags.output_invert = 0
-//        },
-//#endif
-//        {
-//            .channel    = LEDC_LS_CH2_CHANNEL,
-//            .duty       = 0,
-//            .gpio_num   = LEDC_LS_CH2_GPIO,
-//            .speed_mode = LEDC_LS_MODE,
-//            .hpoint     = 0,
-//            .timer_sel  = LEDC_LS_TIMER,
-//            .flags.output_invert = 0
-//        },
-//    };
-//
-//    // Set LED Controller with previously prepared configuration
-//    for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-//        ledc_channel_config(&ledc_channel[ch]);
-//    }
-//
-//    // Initialize fade service.
-//    ledc_fade_func_install(0);
-//    ledc_cbs_t callbacks = {
-//        .fade_cb = cb_ledc_fade_end_event
-//    };
-//    SemaphoreHandle_t counting_sem = xSemaphoreCreateCounting(LEDC_TEST_CH_NUM, 0);
-//
-//    for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-//        ledc_cb_register(ledc_channel[ch].speed_mode, ledc_channel[ch].channel, &callbacks, (void *) counting_sem);
-//    }
-//
-//    while (1) {
-////        printf("1. LEDC fade up to duty = %d\n", LEDC_TEST_DUTY);
-////        for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-////            ledc_set_fade_with_time(ledc_channel[ch].speed_mode,
-////                    ledc_channel[ch].channel, LEDC_TEST_DUTY, LEDC_TEST_FADE_TIME);
-////            ledc_fade_start(ledc_channel[ch].speed_mode,
-////                    ledc_channel[ch].channel, LEDC_FADE_NO_WAIT);
-////        }
-////
-////        for (int i = 0; i < LEDC_TEST_CH_NUM; i++) {
-////            xSemaphoreTake(counting_sem, portMAX_DELAY);
-////        }
-////
-////        printf("2. LEDC fade down to duty = 0\n");
-////        for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-////            ledc_set_fade_with_time(ledc_channel[ch].speed_mode,
-////                    ledc_channel[ch].channel, 0, LEDC_TEST_FADE_TIME);
-////            ledc_fade_start(ledc_channel[ch].speed_mode,
-////                    ledc_channel[ch].channel, LEDC_FADE_NO_WAIT);
-////        }
-////
-////        for (int i = 0; i < LEDC_TEST_CH_NUM; i++) {
-////            xSemaphoreTake(counting_sem, portMAX_DELAY);
-////        }
-//
-//        printf("3. LEDC set duty = %d without fade\n", LEDC_TEST_DUTY);
-//        for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-//            ledc_set_duty(ledc_channel[ch].speed_mode, ledc_channel[ch].channel, LEDC_TEST_DUTY);
-//            ledc_update_duty(ledc_channel[ch].speed_mode, ledc_channel[ch].channel);
-//        }
-//        vTaskDelay(1000 / portTICK_PERIOD_MS);
-//
-////        printf("4. LEDC set duty = 0 without fade\n");
-////        for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-////            ledc_set_duty(ledc_channel[ch].speed_mode, ledc_channel[ch].channel, 0);
-////            ledc_update_duty(ledc_channel[ch].speed_mode, ledc_channel[ch].channel);
-////        }
-////        vTaskDelay(1000 / portTICK_PERIOD_MS);
-//    }
-//}
-
 
 
 static void IRAM_ATTR gpio_isr_handler(void* arg)
@@ -1469,6 +1229,45 @@ void gpio_init(void)
 	//    }
 }
 
+#define MAX_HTTP_RECV_BUFFER 512
+#define MAX_HTTP_OUTPUT_BUFFER 128
+
+static void ota_request(void)
+{
+	char output_buffer[128] = {0};   // Buffer to store response of http request
+	int content_length = 0;
+	esp_http_client_config_t config = {
+			//.url = "http://"CONFIG_EXAMPLE_HTTP_ENDPOINT"/get",
+			.url = "http://magniflex.iot-update.datasmart.cloud/?v=v3.3&idapp=mag&iddevice=08b61fef7944"
+	};
+	esp_http_client_handle_t client = esp_http_client_init(&config);
+
+	// GET Request
+	esp_http_client_set_method(client, HTTP_METHOD_GET);
+	esp_err_t err = esp_http_client_open(client, 0);
+	if (err != ESP_OK) {
+		ESP_LOGE(TAG, "Failed to open HTTP connection: %s", esp_err_to_name(err));
+	} else {
+		content_length = esp_http_client_fetch_headers(client);
+		if (content_length < 0) {
+			ESP_LOGE(TAG, "HTTP client fetch headers failed");
+		} else {
+			int data_read = esp_http_client_read_response(client, output_buffer, MAX_HTTP_OUTPUT_BUFFER);
+			if (data_read >= 0) {
+				ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d",
+						esp_http_client_get_status_code(client),
+						esp_http_client_get_content_length(client));
+				ESP_LOGI(TAG, "RESPONSE = %s",output_buffer);
+				ESP_LOG_BUFFER_HEX(TAG, output_buffer, data_read);
+			} else {
+				ESP_LOGE(TAG, "Failed to read response");
+			}
+		}
+	}
+	esp_http_client_close(client);
+	esp_http_client_cleanup(client);
+}
+
 //********************************************************************************************************//
 
 void app_main(void) {
@@ -1503,12 +1302,34 @@ void app_main(void) {
 
 	print_chip_info();
 
+
+
+
+
+
+
+
+	/* Initialize device main features */
+	ESP_LOGD(TAG,"DEV_INIT: initialize hardware features");
+	esp_err_t err = nvs_flash_init(); // NVS
+	if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
+		ESP_ERROR_CHECK(nvs_flash_erase());
+		err = nvs_flash_init();
+	}
+	ESP_ERROR_CHECK( err );
+
+
+
+
+
+
+
 	// DBG SPIFFS READ CERTS
 	ESP_LOGI(TAG, "Initializing SPIFFS");
 
 	esp_vfs_spiffs_conf_t conf = {
 			.base_path = "/spiffs",
-			.partition_label = PLABEL,
+			.partition_label = NULL,
 			.max_files = 5,
 			.format_if_mount_failed = true
 	};
@@ -1528,22 +1349,66 @@ void app_main(void) {
 		return;
 	}
 
-	size_t total = 0, used = 0;
-	ret = esp_spiffs_info(PLABEL, &total, &used);
+	ESP_LOGI(TAG, "Performing SPIFFS_check().");
+	ret = esp_spiffs_check(conf.partition_label);
 	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s)", esp_err_to_name(ret));
+		ESP_LOGE(TAG, "SPIFFS_check() failed (%s)", esp_err_to_name(ret));
+		return;
+	} else {
+		ESP_LOGI(TAG, "SPIFFS_check() successful");
+	}
+
+	size_t total = 0, used = 0;
+	ret = esp_spiffs_info(conf.partition_label, &total, &used);
+	if (ret != ESP_OK) {
+		ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s). Formatting...", esp_err_to_name(ret));
+		esp_spiffs_format(conf.partition_label);
+		return;
 	} else {
 		ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
 	}
 
-	/* Initialize device main features */
-	ESP_LOGD(TAG,"DEV_INIT: initialize hardware features");
-	esp_err_t err = nvs_flash_init(); // NVS
-	if (err == ESP_ERR_NVS_NO_FREE_PAGES) {
-		ESP_ERROR_CHECK(nvs_flash_erase());
-		err = nvs_flash_init();
+	// Check consistency of reported partiton size info.
+	if (used > total) {
+		ESP_LOGW(TAG, "Number of used bytes cannot be larger than total. Performing SPIFFS_check().");
+		ret = esp_spiffs_check(conf.partition_label);
+		// Could be also used to mend broken files, to clean unreferenced pages, etc.
+		// More info at https://github.com/pellepl/spiffs/wiki/FAQ#powerlosses-contd-when-should-i-run-spiffs_check
+		if (ret != ESP_OK) {
+			ESP_LOGE(TAG, "SPIFFS_check() failed (%s)", esp_err_to_name(ret));
+			return;
+		} else {
+			ESP_LOGI(TAG, "SPIFFS_check() successful");
+		}
 	}
-	ESP_ERROR_CHECK( err );
+
+
+	//	//**********************************************************//
+	ESP_LOGI(TAG, "Reading file");
+	FILE* f = fopen("/spiffs/rsa_private.pem", "r");
+	if (f == NULL) {
+		ESP_LOGE(TAG, "Failed to open file for reading");
+	}
+	else
+	{
+		char line[64];
+		fgets(line, sizeof(line), f);
+		fclose(f);
+	}
+	//	// strip newline
+	//	char* pos = strchr(line, '\n');
+	//	if (pos) {
+	//		*pos = '\0';
+	//	}
+	//	ESP_LOGI(TAG, "Read from file: '%s'", line);
+
+	// All done, unmount partition and disable SPIFFS
+	//esp_vfs_spiffs_unregister(conf.partition_label);
+	//ESP_LOGI(TAG, "SPIFFS unmounted");
+
+	//*****************************************************************//
+
+
 
 
 
@@ -1560,6 +1425,14 @@ void app_main(void) {
 	}
 
 	//tcpip_adapter_init();
+
+
+
+	get_mac_str(macstr);
+
+	memset(macstr,0,sizeof(macstr));
+
+	sprintf(macstr,"ac67b254bdb0");
 
 
 
@@ -1656,7 +1529,31 @@ void app_main(void) {
 
 	ESP_LOGI(TAG, "Free heap: %ub, min: %ub", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
 
-	// OTA section.
+
+
+	char otaurl[300];
+	sprintf(otaurl, "http://magniflex.iot-update.datasmart.cloud?v=%s&idapp=%s&iddevice=%s", fw_ver_str, "mag", /*macstr*/"08b61fef7944");
+	ESP_LOGI(TAG, "OTAURL = %s",otaurl);
+
+
+
+	ota_request();
+
+	//	esp_http_client_config_t config_ota = {
+	//			.url = "http://iot-update.datasmart.cloud/mag-test/esp32magniflex-3.4.bin",//CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL,
+	//			.cert_pem = NULL,//(char *)server_cert_pem_start,
+	//			.event_handler = _http_event_handler,
+	//			.keep_alive_enable = true,
+	//	};
+	//
+	//	esp_err_t ret = esp_https_ota(&config_ota);
+	//	if (ret == ESP_OK) {
+	//		esp_restart();
+	//	} else {
+	//		ESP_LOGE(TAG, "Firmware upgrade failed");
+	//	}
+
+
 #ifdef EN_OTA
 #ifdef NEW_OTAURL
 	char otaurl[300];

@@ -81,7 +81,7 @@ int set_gpio_input( u32 pin, u8 pup, u8 pdw, u8 intr );
 
 
 //******************************************************************//
-#define MAX_APs 5
+#define MAX_APs 3
 
 void wifi_scan(wifi_ap_record_t* ap_info,int number);
 
