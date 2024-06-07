@@ -730,7 +730,9 @@ esp_err_t my_mqtt_event_handler( esp_mqtt_event_handle_t event ) {
 		//            mqtt_service_state = MQTT_SERV_CONNECTED;
 		//            msg_id = esp_mqtt_client_subscribe(client, "/devices/prototype1/events", 1);
 		//            ESP_LOGD(TAG, "sent subscribe successful, msg_id=%d", msg_id);
-		msg_id = esp_mqtt_client_subscribe(client, giotc_data_topic, 1);
+		ESP_LOGI(TAG, "%s", giotc_data_topic_sub);
+
+		msg_id = esp_mqtt_client_subscribe(client, giotc_data_topic_sub, 1);
 		set_mqtt_service_state( MQTT_SERV_CONNECTED );
 		break;
 
@@ -742,7 +744,7 @@ esp_err_t my_mqtt_event_handler( esp_mqtt_event_handle_t event ) {
 		break;
 	case MQTT_EVENT_SUBSCRIBED:
 		//            realloc_buff(8192);
-		ESP_LOGW(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
+		ESP_LOGI(TAG, "MQTT_EVENT_SUBSCRIBED, msg_id=%d", event->msg_id);
 		//            msg_id = esp_mqtt_client_publish(client, "/devices/prototype1/events", "data", 0, 1, 0);
 		//            ESP_LOGD(TAG, "sent publish successful, msg_id=%d", msg_id);
 		set_mqtt_service_state( MQTT_SERV_SUBCRIBED );
@@ -774,6 +776,7 @@ esp_err_t my_mqtt_event_handler( esp_mqtt_event_handle_t event ) {
 		esp_err_t err = esp_tls_get_and_clear_last_error((esp_tls_error_handle_t)event->error_handle, &mbedtls_err, NULL);
 		ESP_LOGD(TAG, "Last esp error code: 0x%x", err);
 		ESP_LOGD(TAG, "Last mbedtls failure: 0x%x", mbedtls_err);
+
 		set_mqtt_service_state( MQTT_SERV_ERROR );
 		break;
 
@@ -1229,16 +1232,23 @@ void gpio_init(void)
 	//    }
 }
 
-#define MAX_HTTP_RECV_BUFFER 512
+//#define MAX_HTTP_RECV_BUFFER 512
 #define MAX_HTTP_OUTPUT_BUFFER 128
 
-static void ota_request(void)
+static void ota_request(char* output_buffer,int buffer_len)
 {
-	char output_buffer[128] = {0};   // Buffer to store response of http request
+	//****************** HTTP REQUEST *****************************//
+	//char output_buffer[128] = {0};   // Buffer to store response of http request
 	int content_length = 0;
+
+	char otaurl[300];
+	sprintf(otaurl, "http://magniflex.iot-update.datasmart.cloud/?v=%s&idapp=%s&iddevice=%s", fw_ver_str, "mag", macstr);
+	ESP_LOGI(TAG, "OTAURL = %s",otaurl);
+
+
 	esp_http_client_config_t config = {
 			//.url = "http://"CONFIG_EXAMPLE_HTTP_ENDPOINT"/get",
-			.url = "http://magniflex.iot-update.datasmart.cloud/?v=v3.3&idapp=mag&iddevice=08b61fef7944"
+			.url = otaurl
 	};
 	esp_http_client_handle_t client = esp_http_client_init(&config);
 
@@ -1252,7 +1262,7 @@ static void ota_request(void)
 		if (content_length < 0) {
 			ESP_LOGE(TAG, "HTTP client fetch headers failed");
 		} else {
-			int data_read = esp_http_client_read_response(client, output_buffer, MAX_HTTP_OUTPUT_BUFFER);
+			int data_read = esp_http_client_read_response(client, output_buffer, buffer_len);
 			if (data_read >= 0) {
 				ESP_LOGI(TAG, "HTTP GET Status = %d, content_length = %d",
 						esp_http_client_get_status_code(client),
@@ -1266,6 +1276,8 @@ static void ota_request(void)
 	}
 	esp_http_client_close(client);
 	esp_http_client_cleanup(client);
+
+
 }
 
 //********************************************************************************************************//
@@ -1429,15 +1441,10 @@ void app_main(void) {
 
 
 	get_mac_str(macstr);
-
-	memset(macstr,0,sizeof(macstr));
-
-	sprintf(macstr,"ac67b254bdb0");
-
-
-
 	//************************* WIFI INIT ********************************//
 
+	//char custom_ssid[30]={"Fisitron Wireless"};
+	////char custom_password[30] ={"055319282055"};
 
 	//**********************************************//
 	ESP_ERROR_CHECK(esp_netif_init());
@@ -1447,6 +1454,8 @@ void app_main(void) {
 
 	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
 	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
+
+	//esp_bridge_wifi_set(custom_ssid,custom_password);
 
 	esp_event_handler_instance_t instance_any_id;
 	esp_event_handler_instance_t instance_got_ip;
@@ -1473,6 +1482,7 @@ void app_main(void) {
 		ESP_LOGI(TAG, "[%s][%s]",wifi_cfg.sta.ssid,wifi_cfg.sta.password);
 	}
 
+	//*****************************************//
 	ESP_ERROR_CHECK(esp_wifi_start());
 
 
@@ -1525,53 +1535,47 @@ void app_main(void) {
 		vTaskDelay(500/portTICK_PERIOD_MS);
 	}
 
+
+	long wtime = T_US; 	// FIXME: fast fix.
+	while ( bt_snd_rsp_flag != 1 ) {
+		vTaskDelay(1000/portTICK_PERIOD_MS);
+		if ( (long) (T_US - wtime) > (long) 2*SEC ) { // fast fix.
+			break;
+		}
+	}
+	bt_snd_rsp_flag = 0;
+	vTaskDelay(2000/portTICK_PERIOD_MS);
+
 	disable_ble();
 
 	ESP_LOGI(TAG, "Free heap: %ub, min: %ub", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
 
 
+	//************************* OTA ************************************//
 
-	char otaurl[300];
-	sprintf(otaurl, "http://magniflex.iot-update.datasmart.cloud?v=%s&idapp=%s&iddevice=%s", fw_ver_str, "mag", /*macstr*/"08b61fef7944");
-	ESP_LOGI(TAG, "OTAURL = %s",otaurl);
+	char output_buffer[MAX_HTTP_OUTPUT_BUFFER] = {0};
+	ota_request(output_buffer,MAX_HTTP_OUTPUT_BUFFER);
 
+	if(strcmp(output_buffer,"none") != 0)
+	{
+		ESP_LOGI(TAG,"%s",output_buffer);
 
+		esp_http_client_config_t config_ota = {
+				.url = output_buffer,//output_buffer,
+				.cert_pem = NULL,//(char *)server_cert_pem_start,
+				.event_handler = _http_event_handler,
+				.keep_alive_enable = true,
+		};
 
-	ota_request();
+		esp_err_t ret = esp_https_ota(&config_ota);
+		if (ret == ESP_OK) {
+			esp_restart();
+		} else {
+			ESP_LOGE(TAG, "Firmware upgrade failed");
+		}
+	}
 
-	//	esp_http_client_config_t config_ota = {
-	//			.url = "http://iot-update.datasmart.cloud/mag-test/esp32magniflex-3.4.bin",//CONFIG_EXAMPLE_FIRMWARE_UPGRADE_URL,
-	//			.cert_pem = NULL,//(char *)server_cert_pem_start,
-	//			.event_handler = _http_event_handler,
-	//			.keep_alive_enable = true,
-	//	};
-	//
-	//	esp_err_t ret = esp_https_ota(&config_ota);
-	//	if (ret == ESP_OK) {
-	//		esp_restart();
-	//	} else {
-	//		ESP_LOGE(TAG, "Firmware upgrade failed");
-	//	}
-
-
-#ifdef EN_OTA
-#ifdef NEW_OTAURL
-	char otaurl[300];
-	sprintf(otaurl, "http://iot-update.datasmart.cloud?v=%s&idapp=%s&iddevice=%s", fw_ver_str, "mag", macstr);
-	//	sprintf(otaurl, "http://iot-update.datasmart.cloud/get_ota.txt");
-	//xota_cfg_t cfg = {
-	//		.base_ota_url = otaurl,
-	//};
-	//libxphase_init_esp_ota(&cfg);
-	//libxphase_check_ota();
-#else
-	xota_cfg_t cfg = {
-			.base_ota_url = "https://raw.githubusercontent.com/yazzaboDev/firmware/master/mag",
-	};
-	libxphase_init_esp_ota(&cfg);
-	libxphase_check_ota();
-#endif
-#endif
+	//************************* SNTP ************************************//
 
 	while (1) {
 		if ( sntp_init_time( DEFAULT_SNTP_SERVER, 20) != 0 ) { // UNIFI_SNTP
@@ -1587,7 +1591,6 @@ void app_main(void) {
 			break;
 		}
 	}
-
 
 
 	//*************************************************************************//

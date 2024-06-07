@@ -22,9 +22,6 @@
 # Usage:
 #	. giotc_prog_n_reg.sh
 # ------------------------------------------------------------------------------
-echo "hello world."
-
-
 # Script functional variables.
 USAGE=". progutil.sh"
 EDNPOINT_DATASMART=https://smart-tech-lite-services.datasmart.cloud/api/Devices/Registration/xYoN99hk63jrfYTzzYofNq1jx2xobcg7
@@ -63,7 +60,7 @@ PUBRSA=`sed -E ':a;N;$!ba;s/\r{0,1}\n/\\\n/g' $PATHDIR/rsa_public.pem`
 
 # Program device with esptool
 echo "Program device."
-esptool.py --chip esp32 --port /dev/ttyUSB0 --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x15000 build/ota_data_initial.bin 0x1000 build/bootloader/bootloader.bin 0x11000 build/phy_init_data.bin 0x20000 build/esp32magniflex-0.0.bin 0x8000 build/myptable.bin
+esptool --chip esp32 --port /dev/ttyUSB0 --baud 921600 --before default_reset --after hard_reset write_flash -z --flash_mode dio --flash_freq 40m --flash_size detect 0x15000 build/ota_data_initial.bin 0x1000 build/bootloader/bootloader.bin 0x11000 build/phy_init_data.bin 0x20000 build/esp32magniflex-0.0.bin 0x8000 build/myptable.bin
 
 
 # Check output.

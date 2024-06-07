@@ -62,7 +62,7 @@ int xgiotc_gen_JWT(char *jwtstr, uint32_t len, uint32_t exp_time_s) {
 
     time_t now;
     time(&now);
-    uint32_t iat = now;             	// Set the time now.
+    uint32_t iat = now - 10;             	// Set the time now.
     uint32_t exp = iat + exp_time_s;	// Set the expire time.
 
     char payload[100];
