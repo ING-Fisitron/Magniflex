@@ -226,7 +226,7 @@ int acq_snsmems_raw_data (magniflex_reg_t *dev) {
 	int err_cnt = 0;
 
 	// Set data acquisition counters register.
-	ESP_LOGI(TAG,"Try one-shot.");
+	//ESP_LOGI(TAG,"Try one-shot.");
 	memset(rtbuff, 0, 4);
 	u16 *lendata = (uint16_t*) &rtbuff[0];
 	*lendata = (u16) blen;
@@ -245,7 +245,7 @@ int acq_snsmems_raw_data (magniflex_reg_t *dev) {
 		dev->snsmems[i].iscomm = 1;
 	}
 	// Reset trigger [on rising edge].
-	ESP_LOGI(TAG,"Reset trigger.");
+	//ESP_LOGI(TAG,"Reset trigger.");
 	memset(rtbuff, 0, 4);
 	err_cnt = 0;
 	for ( int i = 0 ; i < dev->cnt_nsns ; i++ ) {
@@ -261,7 +261,7 @@ int acq_snsmems_raw_data (magniflex_reg_t *dev) {
 		dev->snsmems[i].iscomm = 0;
 	}
 	// Trigger broadcast.
-	ESP_LOGI(TAG,"Broadcast trigger acquisition.");
+	//ESP_LOGI(TAG,"Broadcast trigger acquisition.");
 #ifdef GET_RAWDATA
 	memset(i2c_buffered_data,0,sizeof(blen));
 #endif
@@ -276,14 +276,6 @@ int acq_snsmems_raw_data (magniflex_reg_t *dev) {
 	ESP_LOGI(TAG,"Wait for acquisition: %d s.", wait);
 	long tmt = T_US;
 	while ( (long) (T_US - tmt) < (long) (wait*SEC) ) {
-		//		ESP_LOGI(TAG,"wait for acquisition: %d%%", (int) ((float) j/wait*100) );
-		//		for ( int i = 0 ; i < dev->cnt_nsns ; i++ ) {
-		//			if ( i2c_master_read_slave_reg(I2C_PORT_NUM, dev->snsmems[i], (8*4), rtbuff, 4) != ESP_OK ) {
-		//				ESP_LOGE(TAG,"error: i2c write fail. [device %d]", dev->snsmems[i]);
-		//			}
-		//			ESP_LOGD(TAG,"ret [%d]: %d %d %d %d", i, rtbuff[0], rtbuff[1], rtbuff[2], rtbuff[3] );
-		//		}
-		////		vTaskDelay((wait*1000)/portTICK_PERIOD_MS);
 		t_snsmems_wdt = T_US;
 		vTaskDelay(1000/portTICK_PERIOD_MS);
 	}
@@ -349,7 +341,7 @@ void acq_snsmems_env_data ( magniflex_reg_t *dev ) {
 	magx[dev->cnt_nsns], magy[dev->cnt_nsns], magz[dev->cnt_nsns];
 
 
-	ESP_LOGI(TAG, "acq_snsmems_env_data -> num sensori [%d]",dev->cnt_nsns);
+	//ESP_LOGI(TAG, "acq_snsmems_env_data -> num sensori [%d]",dev->cnt_nsns);
 
 
 	// Read environmental data.
@@ -382,9 +374,9 @@ void acq_snsmems_env_data ( magniflex_reg_t *dev ) {
 		magy[i] = *((int32_t*)&rtbuff[10]);
 		magz[i] = *((int32_t*)&rtbuff[11]);
 
-		ESP_LOGI(TAG, "[%d] angl:%.02f|acc:%d,%d,%d|temp:%.01f|hum:%.01f|mag:%d,%d,%d",
-				dev->snsmems[i].indx, angle[i], accx[i], accy[i], accz[i], temp[i], hum[i],
-				magx[i], magy[i], magz[i] );
+//		ESP_LOGI(TAG, "[%d] angl:%.02f|acc:%d,%d,%d|temp:%.01f|hum:%.01f|mag:%d,%d,%d",
+//				dev->snsmems[i].indx, angle[i], accx[i], accy[i], accz[i], temp[i], hum[i],
+//				magx[i], magy[i], magz[i] );
 
 		// Assign BODY_P parameter for each current SNSMEMS.
 		// ------------------------------------------------.
@@ -452,7 +444,7 @@ void acq_snsmems_env_data ( magniflex_reg_t *dev ) {
 	}
 
 	dev->params[TEMP].val.fbuf[0] = tmp_temp;
-	ESP_LOGW(TAG,"temp: %.2f", dev->params[TEMP].val.fbuf[0]);
+	//ESP_LOGW(TAG,"temp: %.2f", dev->params[TEMP].val.fbuf[0]);
 
 
 	// Count replying sensors.
@@ -467,7 +459,7 @@ void acq_snsmems_env_data ( magniflex_reg_t *dev ) {
 	if ( (dev->presence == 0) ) {
 		for (int e = 0; e < dev->cnt_nsns ; e++ ) {
 			if ( (dev->snsmems[e].iscomm = 1) && ((angle[e] <= dev->prsnc_trsh[e*2]) || (angle[e] >= dev->prsnc_trsh[e*2+1])) ) {
-				ESP_LOGW(TAG,"Presence for threshold --------------------------------> %d  [%.02f] [%.02f] [%.02f]", e,angle[e],dev->prsnc_trsh[e*2],dev->prsnc_trsh[e*2+1]);
+				ESP_LOGI(TAG,"Presence for threshold --------------------------------> %d  [%.02f] [%.02f] [%.02f]", e,angle[e],dev->prsnc_trsh[e*2],dev->prsnc_trsh[e*2+1]);
 				dev->presence = 1;
 				//rgbled_set_c_presence(0x050000, dev->presence);
 				init_cirf(&bpm_filt);
@@ -486,12 +478,12 @@ void acq_snsmems_env_data ( magniflex_reg_t *dev ) {
 	else if ( dev->presence == 1 ) {
 		int chck = 0;
 		for (int e = 0; e < dev->cnt_nsns ; e++ ) {
-			ESP_LOGW(TAG,"angle[%d]: %.2f", e, angle[e]);
+			//ESP_LOGW(TAG,"angle[%d]: %.2f", e, angle[e]);
 			if ( (dev->snsmems[e].iscomm = 1) && (angle[e] > dev->prsnc_trsh[e*2]) && (angle[e] < dev->prsnc_trsh[e*2+1]) ) {
-				ESP_LOGW(TAG,"Threshold[%d]: %.2f, %.2f, %.2f.", e, angle[e], dev->prsnc_trsh[e*2], dev->prsnc_trsh[e*2+1]);
+				//ESP_LOGW(TAG,"Threshold[%d]: %.2f, %.2f, %.2f.", e, angle[e], dev->prsnc_trsh[e*2], dev->prsnc_trsh[e*2+1]);
 				chck++;
 			}else{
-				ESP_LOGE(TAG,"Threshold[%d]: %.2f, %.2f, %.2f.", e, angle[e], dev->prsnc_trsh[e*2], dev->prsnc_trsh[e*2+1]);
+				//ESP_LOGE(TAG,"Threshold[%d]: %.2f, %.2f, %.2f.", e, angle[e], dev->prsnc_trsh[e*2], dev->prsnc_trsh[e*2+1]);
 			}
 		}
 		if (chck == rply_sns_cnt) {
@@ -631,17 +623,17 @@ bpm_data_t sel_best_bpm ( bpm_data_t *bpm ) {
 			memcpy(&selbpm, &bpm[i], sizeof(bpm_data_t));
 		}
 	}
-	ESP_LOGI(TAG,"//// BPM ////\n"
-			//"\t\tdev:\t|%d\t|\n"
-			"\t\tmax:\t|%.02f\t|\n"
-			"\t\tavg:\t|%.02f\t|\n"
-			"\t\tmin:\t|%.02f\t|\n"
-			"\t\tk1:\t|%.02f\t|\n"
-			"\t\tk2:\t|%.02f\t|\n"
-			"\t\tR: \t|%.02f\t|\n"
-			"\t\tdif:\t|%.02f\t|\n",
-			selbpm.max, selbpm.avg, selbpm.min,
-			selbpm.k1, selbpm.k2, selbpm.ratio, fabsf(selbpm.k1-selbpm.k2) );
+//	ESP_LOGI(TAG,"//// BPM ////\n"
+//			//"\t\tdev:\t|%d\t|\n"
+//			"\t\tmax:\t|%.02f\t|\n"
+//			"\t\tavg:\t|%.02f\t|\n"
+//			"\t\tmin:\t|%.02f\t|\n"
+//			"\t\tk1:\t|%.02f\t|\n"
+//			"\t\tk2:\t|%.02f\t|\n"
+//			"\t\tR: \t|%.02f\t|\n"
+//			"\t\tdif:\t|%.02f\t|\n",
+//			selbpm.max, selbpm.avg, selbpm.min,
+//			selbpm.k1, selbpm.k2, selbpm.ratio, fabsf(selbpm.k1-selbpm.k2) );
 	//	ESP_LOGI(TAG,"dev:\t|%d\t|", seldev );
 	//	ESP_LOGI(TAG,"max:\t|%.02f\t|", selbpm.max );
 	//	ESP_LOGI(TAG,"avg:\t|%.02f\t|", selbpm.avg );
@@ -771,29 +763,6 @@ int acq_snsmems_data( magniflex_reg_t *dev ) {
 			continue;
 		}
 
-//		ESP_LOGI(TAG, "------------------- board %d ----------------------", dev->snsmems[i].indx);
-//		for ( int j = 0 ; j < 6 ; j++ ) { // DBG.
-//			ESP_LOGI(TAG, "period[%d][%d] = %d.", i, j, periods[i][j]);
-//		}
-//		for ( int j = 0 ; j < 6 ; j++ ) { // DBG.
-//			ESP_LOGI(TAG, "Min/Max[%d][%d] = %d.", i, j, minmax[i][j]);
-//		}
-
-//		ESP_LOGI(TAG,"periods:\n"
-//				"\tAccZHigh %d \tAccZLow %d\n"
-//				"\tGyroXHigh %d \tGyroXLow %d\n"
-//				"\tGyroYHigh %d \tGyroYLow %d",
-//				periods[i][0], periods[i][1],
-//				periods[i][2], periods[i][3],
-//				periods[i][4], periods[i][5]);
-//		ESP_LOGI(TAG,"Min/Max:\n"
-//				"\tAccZMax %d \tAccZMin %d \tDelta %d\n"
-//				"\tGyroXMax %d \tGyroXMin %d \tDelta %d\n"
-//				"\tGyroYMax %d \tGyroYMin %d \tDelta %d",
-//				minmax[i][0], minmax[i][1], minmax[i][0]-minmax[i][1],
-//				minmax[i][2], minmax[i][3], minmax[i][2]-minmax[i][3],
-//				minmax[i][4], minmax[i][5], minmax[i][4]-minmax[i][5]);
-
 		// BPM holding variables.
 		int nazh = periods[i][0];
 		int nazl = periods[i][1];
@@ -818,17 +787,9 @@ int acq_snsmems_data( magniflex_reg_t *dev ) {
 
 		if(	(dev->presence == 0) ||
 				(
-						(minmax[i][0]-minmax[i][1]) > 500
-						//					||
-						//					(minmax[i][0]-minmax[i][1]) < 4
-						||
-						(minmax[i][2]-minmax[i][3])  > 5000
-						||
-						//					(minmax[i][2]-minmax[i][3])  < 600
-						//					||
+						(minmax[i][0]-minmax[i][1]) > 500 ||
+						(minmax[i][2]-minmax[i][3])  > 5000 ||
 						(minmax[i][4]-minmax[i][5])  > 5000
-						//					||
-						//					(minmax[i][4]-minmax[i][5])  < 600
 				)
 		) {
 			//			ESP_LOGW(TAG,"No Heart Rate detected device %d", dev->snsmems[i]);

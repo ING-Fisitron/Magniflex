@@ -285,6 +285,11 @@ void init_magniflex_device ( magniflex_reg_t *dev ) {
 	dev->data_req[TEMP_A] = 1;
 	dev->data_req[HUM_A] = 1;
 	dev->data_req[COMPASS] = 1;
+	dev->data_req[BODY_P] = 1;
+	dev->data_req[SLEEP_T] = 1;
+	dev->data_req[BREATH_R] = 1;
+	dev->data_req[HEART_R] = 1;
+	dev->data_req[GOOD_K] = 1;
 
 	dev->smph = xSemaphoreCreateBinary();
 	if( dev->smph == NULL ) {
@@ -502,13 +507,7 @@ int chck_req_periodic_pub( magniflex_reg_t *dev, char* pub_js, char* data_js ) {
 		strcat(pub_js,"}");
 
 
-		if ( (get_mqtt_service_state() == MQTT_SERV_CONNECTED) || (get_mqtt_service_state() == MQTT_SERV_SUBCRIBED) ) {
-			ESP_LOGW(TAG,"periodic publish %d:\n%s",strlen(pub_js), pub_js);
-			ret = esp_mqtt_client_publish(mqttc, giotc_data_topic, pub_js, 0, 1, 0);
-		}
-		else {
-			ESP_LOGW(TAG,"chck_req_periodic_pub skip publish: MQTT client not connected.");
-		}
+
 
 		//print_mgnflx_regs( &curdev );
 		// Reset JSON.
@@ -963,47 +962,7 @@ static void stats_task(void *arg)
 void ctrl_tsk( void *vargs ) {
 
 
-#ifdef GIOTCP_PUB
-
-	sprintf(giotc_cfg_dev_id,GCPIOT_CLIENT_ID_TEMPLATE,macstr);
-	sprintf(giotc_data_topic,DATA_TOPIC_TEMPLATE,macstr);
-	sprintf(giotc_data_topic_sub,DATA_TOPIC_SUB_TEMPLATE,macstr);
-
-	ESP_LOGI(TAG,"giotc_cfg_dev_id %s",giotc_cfg_dev_id);
-	ESP_LOGI(TAG,"giotc_data_topic %s",giotc_data_topic);
-	ESP_LOGI(TAG,"giotc_data_topic_sub %s",giotc_data_topic_sub);
-
-
-	esp_mqtt_client_config_t mqttcfg = {
-			.uri = GCPIOT_BROKER_URI,
-			.event_handle = my_mqtt_event_handler,
-			.task_stack = 5*(1024),
-	};
-	ESP_ERROR_CHECK( mqtt_app_start( &mqttc, &mqttcfg ) );
-#endif
-
-
-#ifdef GIOTCP_PUB
-	long print_heap_tm = get_curtimestamp();
-	while ( (get_mqtt_service_state() < MQTT_SERV_CONNECTED) ) {
-		if ( chck_time_int(&print_heap_tm, 30) == 1 ) { 			// DBG: print memory
-#ifdef EN_HEAP_TASK_INFO
-			esp_dump_per_task_heap_info();
-#endif
-			ESP_LOGI( TAG, 	"free heap: %8u B (NOW), min: %8u B (MIN)",
-					esp_get_free_heap_size(), esp_get_minimum_free_heap_size() );
-			ESP_LOGI( TAG, 	"used heap: %8u B (NOW), min: %8u B (MAX)",
-					used_heap - esp_get_free_heap_size(), used_heap - esp_get_minimum_free_heap_size() );
-		}
-		vTaskDelay(1000/portTICK_PERIOD_MS);
-	}
-#else
-	rgbled_set_state(RGBLED_DEBUG);
-#endif
-
-
 	ESP_LOGI(TAG, "Run working tasks.");
-
 
 	// Time variables.
 	long print_log_t = T_US;
@@ -1046,20 +1005,52 @@ void ctrl_tsk( void *vargs ) {
 		curdev.params[TEMP_A].val.fbuf[0] = t;
 
 
-		ESP_LOGI(TAG, "Run working tasks. [%f] [%f]",t,h);
+		//ESP_LOGI(TAG, "Run working tasks. [%f] [%f]",t,h);
 
 
 		if ( curdev.cnt_nsns < 2 ) {
 			ESP_LOGW(TAG,"no snsmems detected, try enumaration.");
+			curdev.cnt_nsns = snsmems_initilaize(curdev.snsmems);
 		}
 		else
 		{
 			acq_snsmems_data(&curdev);
 		}
 
+
+		//**************** dati da inviare ******************//
+
+		//		- Temperatura materasso (temp)
+		//curdev.params[TEMP].val.fbuf[0]
+		//		- Temperatura stanza (temp_am)
+		//curdev.params[TEMP].val.fbuf[0]
+		//		- Umidità materasso (hum)
+		//curdev.params[HUM].val.fbuf[0]
+		//		- Umidità stanza (hum_am)
+		//curdev.params[HUM_A].val.fbuf[0]
+		//		- Battiti al minuto (heart_r)
+		//curdev.params[HEART_R].val.fbuf[0]
+		//		- Atti respirazione al minuto (breath_r)
+		//curdev.params[BREATH_R].val.fbuf[0]
+		//		- Posizione del corpo sul materasso (i 3 valori in body_p)
+		//curdev.params[COMPASS].val.fbuf[0]
+
 		memset(js,0,sizeof(js));
 		memset(pjsdata,0,sizeof(pjsdata));
 		chck_req_periodic_pub(&curdev, js, pjsdata);
+
+
+//		ESP_LOGI(TAG,"[%f][%f][%f][%f] [%f][%f][%f]",
+//				curdev.params[TEMP].val.fbuf[0],
+//				curdev.params[TEMP_A].val.fbuf[0],
+//				curdev.params[HUM].val.fbuf[0],
+//				curdev.params[HUM_A].val.fbuf[0],
+//				curdev.params[HEART_R].val.fbuf[0],
+//				curdev.params[BREATH_R].val.fbuf[0],
+//				curdev.params[COMPASS].val.fbuf[0]);
+
+
+
 
 
 		gpio_set_level(GPIO_OUTPUT_IO_0, 1000);
@@ -1289,8 +1280,8 @@ void app_main(void) {
 	/* Setup components log levels without rebuild whole IDF *
 	 * ----------------------------------------------------- */
 	esp_log_level_set("*", ESP_LOG_INFO);
-	esp_log_level_set("XMQTT", ESP_LOG_DEBUG);
-	esp_log_level_set("XBLE", ESP_LOG_DEBUG);
+	esp_log_level_set("MQTT", ESP_LOG_DEBUG);
+	esp_log_level_set("BLE", ESP_LOG_DEBUG);
 	esp_log_level_set("MAIN", ESP_LOG_DEBUG);
 	//	esp_log_level_set("XOTA", ESP_LOG_DEBUG);
 	//	esp_log_level_set("XWIFI", ESP_LOG_DEBUG);
@@ -1315,12 +1306,6 @@ void app_main(void) {
 	print_chip_info();
 
 
-
-
-
-
-
-
 	/* Initialize device main features */
 	ESP_LOGD(TAG,"DEV_INIT: initialize hardware features");
 	esp_err_t err = nvs_flash_init(); // NVS
@@ -1329,98 +1314,6 @@ void app_main(void) {
 		err = nvs_flash_init();
 	}
 	ESP_ERROR_CHECK( err );
-
-
-
-
-
-
-
-	// DBG SPIFFS READ CERTS
-	ESP_LOGI(TAG, "Initializing SPIFFS");
-
-	esp_vfs_spiffs_conf_t conf = {
-			.base_path = "/spiffs",
-			.partition_label = NULL,
-			.max_files = 5,
-			.format_if_mount_failed = true
-	};
-
-	// Use settings defined above to initialize and mount SPIFFS filesystem.
-	// Note: esp_vfs_spiffs_register is an all-in-one convenience function.
-	esp_err_t ret = esp_vfs_spiffs_register(&conf);
-
-	if (ret != ESP_OK) {
-		if (ret == ESP_FAIL) {
-			ESP_LOGE(TAG, "Failed to mount or format filesystem");
-		} else if (ret == ESP_ERR_NOT_FOUND) {
-			ESP_LOGE(TAG, "Failed to find SPIFFS partition");
-		} else {
-			ESP_LOGE(TAG, "Failed to initialize SPIFFS (%s)", esp_err_to_name(ret));
-		}
-		return;
-	}
-
-	ESP_LOGI(TAG, "Performing SPIFFS_check().");
-	ret = esp_spiffs_check(conf.partition_label);
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "SPIFFS_check() failed (%s)", esp_err_to_name(ret));
-		return;
-	} else {
-		ESP_LOGI(TAG, "SPIFFS_check() successful");
-	}
-
-	size_t total = 0, used = 0;
-	ret = esp_spiffs_info(conf.partition_label, &total, &used);
-	if (ret != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to get SPIFFS partition information (%s). Formatting...", esp_err_to_name(ret));
-		esp_spiffs_format(conf.partition_label);
-		return;
-	} else {
-		ESP_LOGI(TAG, "Partition size: total: %d, used: %d", total, used);
-	}
-
-	// Check consistency of reported partiton size info.
-	if (used > total) {
-		ESP_LOGW(TAG, "Number of used bytes cannot be larger than total. Performing SPIFFS_check().");
-		ret = esp_spiffs_check(conf.partition_label);
-		// Could be also used to mend broken files, to clean unreferenced pages, etc.
-		// More info at https://github.com/pellepl/spiffs/wiki/FAQ#powerlosses-contd-when-should-i-run-spiffs_check
-		if (ret != ESP_OK) {
-			ESP_LOGE(TAG, "SPIFFS_check() failed (%s)", esp_err_to_name(ret));
-			return;
-		} else {
-			ESP_LOGI(TAG, "SPIFFS_check() successful");
-		}
-	}
-
-
-	//	//**********************************************************//
-	ESP_LOGI(TAG, "Reading file");
-	FILE* f = fopen("/spiffs/rsa_private.pem", "r");
-	if (f == NULL) {
-		ESP_LOGE(TAG, "Failed to open file for reading");
-	}
-	else
-	{
-		char line[64];
-		fgets(line, sizeof(line), f);
-		fclose(f);
-	}
-	//	// strip newline
-	//	char* pos = strchr(line, '\n');
-	//	if (pos) {
-	//		*pos = '\0';
-	//	}
-	//	ESP_LOGI(TAG, "Read from file: '%s'", line);
-
-	// All done, unmount partition and disable SPIFFS
-	//esp_vfs_spiffs_unregister(conf.partition_label);
-	//ESP_LOGI(TAG, "SPIFFS unmounted");
-
-	//*****************************************************************//
-
-
 
 
 
@@ -1436,55 +1329,8 @@ void app_main(void) {
 		ESP_LOGE(TAG, "error: init HTS221 temperature");
 	}
 
-	//tcpip_adapter_init();
-
-
-
 	get_mac_str(macstr);
 	//************************* WIFI INIT ********************************//
-
-	//char custom_ssid[30]={"Fisitron Wireless"};
-	////char custom_password[30] ={"055319282055"};
-
-	//**********************************************//
-	ESP_ERROR_CHECK(esp_netif_init());
-	ESP_ERROR_CHECK(esp_event_loop_create_default());
-	esp_netif_t *sta_netif = esp_netif_create_default_wifi_sta();
-	assert(sta_netif);
-
-	wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-	ESP_ERROR_CHECK(esp_wifi_init(&cfg));
-
-	//esp_bridge_wifi_set(custom_ssid,custom_password);
-
-	esp_event_handler_instance_t instance_any_id;
-	esp_event_handler_instance_t instance_got_ip;
-	ESP_ERROR_CHECK(esp_event_handler_instance_register(WIFI_EVENT,
-			ESP_EVENT_ANY_ID,
-			&event_handler,
-			NULL,
-			&instance_any_id));
-	ESP_ERROR_CHECK(esp_event_handler_instance_register(IP_EVENT,
-			IP_EVENT_STA_GOT_IP,
-			&event_handler,
-			NULL,
-			&instance_got_ip));
-
-	ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
-
-
-	wifi_config_t wifi_cfg;
-	if(esp_wifi_get_config(ESP_IF_WIFI_STA, &wifi_cfg) != ESP_OK) {
-		ESP_LOGE(TAG, "Failed to get Wi-Fi configuration in WIFI_STORAGE_FLASH");
-	}
-	else
-	{
-		ESP_LOGI(TAG, "[%s][%s]",wifi_cfg.sta.ssid,wifi_cfg.sta.password);
-	}
-
-	//*****************************************//
-	ESP_ERROR_CHECK(esp_wifi_start());
-
 
 	//********************************************************//
 
@@ -1517,80 +1363,14 @@ void app_main(void) {
 		curdev.prsnc_trsh[i] = 0.00f;
 	}
 
-	enable_ble();
-
-	//xTaskCreatePinnedToCore(ble_tsk, "ble_tsk", 2048, NULL, 4, NULL, 1/*tskNO_AFFINITY*/);
-	while (wifi_connected == false)
-	{
-		char blemsg[500];
-		if (is_ble_msg() > 0) {
-			if (get_ble_msg(blemsg) < 0) {
-				ESP_LOGE(TAG,"error: read BLE stored message.");
-			}
-			else {
-				ESP_LOGI(TAG,"%s",blemsg);
-				prs_bt_js(blemsg);
-			}
-		}
-		vTaskDelay(500/portTICK_PERIOD_MS);
-	}
-
-
-	long wtime = T_US; 	// FIXME: fast fix.
-	while ( bt_snd_rsp_flag != 1 ) {
-		vTaskDelay(1000/portTICK_PERIOD_MS);
-		if ( (long) (T_US - wtime) > (long) 2*SEC ) { // fast fix.
-			break;
-		}
-	}
-	bt_snd_rsp_flag = 0;
-	vTaskDelay(2000/portTICK_PERIOD_MS);
-
-	disable_ble();
-
-	ESP_LOGI(TAG, "Free heap: %ub, min: %ub", esp_get_free_heap_size(), esp_get_minimum_free_heap_size());
-
 
 	//************************* OTA ************************************//
 
-	char output_buffer[MAX_HTTP_OUTPUT_BUFFER] = {0};
-	ota_request(output_buffer,MAX_HTTP_OUTPUT_BUFFER);
 
-	if(strcmp(output_buffer,"none") != 0)
-	{
-		ESP_LOGI(TAG,"%s",output_buffer);
-
-		esp_http_client_config_t config_ota = {
-				.url = output_buffer,//output_buffer,
-				.cert_pem = NULL,//(char *)server_cert_pem_start,
-				.event_handler = _http_event_handler,
-				.keep_alive_enable = true,
-		};
-
-		esp_err_t ret = esp_https_ota(&config_ota);
-		if (ret == ESP_OK) {
-			esp_restart();
-		} else {
-			ESP_LOGE(TAG, "Firmware upgrade failed");
-		}
-	}
 
 	//************************* SNTP ************************************//
 
-	while (1) {
-		if ( sntp_init_time( DEFAULT_SNTP_SERVER, 20) != 0 ) { // UNIFI_SNTP
-			ESP_LOGW(TAG,"fail obtaining time from specified SNTP server.");
-		}
-		else {
-			break;
-		}
-		if ( sntp_init_time( POOL_PRJCT_SNTP, 20) != 0 ) { // UNIFI_SNTP
-			ESP_LOGW(TAG,"fail obtaining time from specified SNTP server.");
-		}
-		else {
-			break;
-		}
-	}
+
 
 
 	//*************************************************************************//
