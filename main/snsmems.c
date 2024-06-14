@@ -273,7 +273,7 @@ int acq_snsmems_raw_data (magniflex_reg_t *dev) {
 
 	// Wait for acquisition without I2C	transaction to avoid electrical noise.
 	int wait = (int) (blen/(freqsamp*axis) + 1);
-	ESP_LOGI(TAG,"Wait for acquisition: %d s.", wait);
+	//ESP_LOGI(TAG,"Wait for acquisition: %d s.", wait);
 	long tmt = T_US;
 	while ( (long) (T_US - tmt) < (long) (wait*SEC) ) {
 		t_snsmems_wdt = T_US;
@@ -302,7 +302,7 @@ int acq_snsmems_raw_data (magniflex_reg_t *dev) {
 			}
 		}
 		if ( chck >= dev->cnt_nsns ) {
-			ESP_LOGI(TAG,"SNSMEMS acquisition completed.");
+			//ESP_LOGI(TAG,"SNSMEMS acquisition completed.");
 			break;
 		}
 		if ( chck_time_int(&tmt_wsns, 5) == 1 ) {

@@ -497,7 +497,16 @@ int chck_req_periodic_pub( magniflex_reg_t *dev, char* pub_js, char* data_js ) {
 	else
 	{
 
-		ESP_LOGI(TAG,"data_js (%d):\n%s",strlen(data_js), data_js);
+		//ESP_LOGI(TAG,"data_js (%d):\n%s",strlen(data_js), data_js);
+
+		if(dev->presence == 1)
+		{
+			printf("MAGNI_PRES:%s\n",data_js);
+		}
+		else
+		{
+			printf("MAGNI_NOPRES:%s\n",data_js);
+		}
 		//	ret = sprintf(pub_js,"{'ts':%ld,'data':", get_curtimestamp());
 		jsn_add_key(pub_js, "ts");
 		int tmp_ts = get_curtimestamp();
@@ -959,39 +968,10 @@ static void stats_task(void *arg)
 #endif
 ///////////////////////////////////////////////////////////
 //*********************************************************************************************//
-void ctrl_tsk( void *vargs ) {
+void env_tsk( void *vargs ) {
 
 
-	ESP_LOGI(TAG, "Run working tasks.");
-
-	// Time variables.
-	long print_log_t = T_US;
-	bool connected_sns = false;
-
-	curdev.cnt_nsns = snsmems_initilaize(curdev.snsmems);
-
-	if ( curdev.cnt_nsns < 2 ) {
-		ESP_LOGW(TAG,"no snsmems detected, try enumaration.");
-	}
-	else
-	{
-		ESP_LOGI("snsmems_acq_tsk","detected: %d SNSMEMS", curdev.cnt_nsns);
-		for ( int i = 0; i < curdev.cnt_nsns; i++ ) {
-			ESP_LOGI(TAG,"sns_addr[%d]: %02x(%d)", i, curdev.snsmems[i].indx, curdev.snsmems[i].indx);
-		}
-
-		// Get saved threshold values.
-		//snsmems_nvs_get_thrsh(curdev.prsnc_trsh);
-
-		ESP_LOGI("snsmems_nvs_get_thrsh","prsnc_trsh: %f %f %f", curdev.prsnc_trsh[0],curdev.prsnc_trsh[1],curdev.prsnc_trsh[2]);
-		connected_sns = true;
-	}
-
-
-#ifdef USE_PERIOD_CIRCBUF
-	period_buf_init();
-#endif
-
+	ESP_LOGI(TAG, "Run env tasks.");
 
 	while(1)
 	{
@@ -1004,60 +984,32 @@ void ctrl_tsk( void *vargs ) {
 		curdev.params[HUM_A].val.fbuf[0] = h;
 		curdev.params[TEMP_A].val.fbuf[0] = t;
 
-
 		//ESP_LOGI(TAG, "Run working tasks. [%f] [%f]",t,h);
 
-
-		if ( curdev.cnt_nsns < 2 ) {
-			ESP_LOGW(TAG,"no snsmems detected, try enumaration.");
-			curdev.cnt_nsns = snsmems_initilaize(curdev.snsmems);
-		}
-		else
-		{
-			acq_snsmems_data(&curdev);
-		}
-
-
-		//**************** dati da inviare ******************//
-
-		//		- Temperatura materasso (temp)
-		//curdev.params[TEMP].val.fbuf[0]
-		//		- Temperatura stanza (temp_am)
-		//curdev.params[TEMP].val.fbuf[0]
-		//		- Umidità materasso (hum)
-		//curdev.params[HUM].val.fbuf[0]
-		//		- Umidità stanza (hum_am)
-		//curdev.params[HUM_A].val.fbuf[0]
-		//		- Battiti al minuto (heart_r)
-		//curdev.params[HEART_R].val.fbuf[0]
-		//		- Atti respirazione al minuto (breath_r)
-		//curdev.params[BREATH_R].val.fbuf[0]
-		//		- Posizione del corpo sul materasso (i 3 valori in body_p)
-		//curdev.params[COMPASS].val.fbuf[0]
+		acq_snsmems_env_data(&curdev);
 
 		memset(js,0,sizeof(js));
 		memset(pjsdata,0,sizeof(pjsdata));
 		chck_req_periodic_pub(&curdev, js, pjsdata);
 
 
-//		ESP_LOGI(TAG,"[%f][%f][%f][%f] [%f][%f][%f]",
-//				curdev.params[TEMP].val.fbuf[0],
-//				curdev.params[TEMP_A].val.fbuf[0],
-//				curdev.params[HUM].val.fbuf[0],
-//				curdev.params[HUM_A].val.fbuf[0],
-//				curdev.params[HEART_R].val.fbuf[0],
-//				curdev.params[BREATH_R].val.fbuf[0],
-//				curdev.params[COMPASS].val.fbuf[0]);
-
-
-
-
-
-		gpio_set_level(GPIO_OUTPUT_IO_0, 1000);
-		vTaskDelay(500/portTICK_PERIOD_MS);
-		gpio_set_level(GPIO_OUTPUT_IO_0, 0);
 		vTaskDelay(500/portTICK_PERIOD_MS);
 
+	}
+
+	vTaskDelete(NULL);
+}
+
+
+void ctrl_tsk( void *vargs ) {
+
+
+	ESP_LOGI(TAG, "Run working tasks.");
+
+	while(1)
+	{
+		acq_snsmems_data(&curdev);
+		vTaskDelay(500/portTICK_PERIOD_MS);
 	}
 
 	vTaskDelete(NULL);
@@ -1373,8 +1325,41 @@ void app_main(void) {
 
 
 
+	// Time variables.
+	long print_log_t = T_US;
+	bool connected_sns = false;
+
+	curdev.cnt_nsns = snsmems_initilaize(curdev.snsmems);
+
+	if ( curdev.cnt_nsns < 2 ) {
+		ESP_LOGW(TAG,"no snsmems detected, try enumaration.");
+	}
+	else
+	{
+		ESP_LOGI("snsmems_acq_tsk","detected: %d SNSMEMS", curdev.cnt_nsns);
+		for ( int i = 0; i < curdev.cnt_nsns; i++ ) {
+			ESP_LOGI(TAG,"sns_addr[%d]: %02x(%d)", i, curdev.snsmems[i].indx, curdev.snsmems[i].indx);
+		}
+
+		// Get saved threshold values.
+		//snsmems_nvs_get_thrsh(curdev.prsnc_trsh);
+
+		ESP_LOGI("snsmems_nvs_get_thrsh","prsnc_trsh: %f %f %f", curdev.prsnc_trsh[0],curdev.prsnc_trsh[1],curdev.prsnc_trsh[2]);
+		connected_sns = true;
+	}
+
+
+#ifdef USE_PERIOD_CIRCBUF
+	period_buf_init();
+#endif
+
+
+
 	//*************************************************************************//
+	xTaskCreatePinnedToCore(env_tsk, "ctrl_tsk", 1024*5, NULL, 4, NULL, 1/*tskNO_AFFINITY*/);
+
 	xTaskCreatePinnedToCore(ctrl_tsk, "ctrl_tsk", 1024*5, NULL, 4, NULL, 1/*tskNO_AFFINITY*/);
+
 
 
 

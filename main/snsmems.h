@@ -199,5 +199,6 @@ long snsmems_get_wdt(void);
 
 void period_buf_init(void);
 int acq_snsmems_data( magniflex_reg_t *dev );
+void acq_snsmems_env_data ( magniflex_reg_t *dev );
 
 #endif /* MAIN_SNSMEMS_H_ */
